@@ -62,11 +62,21 @@ Your config lives at `~/.config/plaud-scribe/config.toml` (already created from
 4. The **Usage Limits (Credits)** field is per billing period, which matches the
    `[limits] monthly_minutes` ceiling below. Set it as a backstop once you know your
    plan's credits-per-hour rate; see *Capping how much gets transcribed*.
-5. Store the key without it appearing on screen or in your shell history:
+5. Store the key with `scripts/set-key`, which reads it from stdin so it never appears
+   on screen, in your shell history, or in a process argument list:
 
 ```bash
-read -rs -p "ElevenLabs key: " K && python3 -c "import sys,pathlib;p=pathlib.Path.home()/'.config/plaud-scribe/config.toml';t=p.read_text();i=t.index('[elevenlabs]');j=t.index('api_key = \"\"',i);p.write_text(t[:j]+'api_key = \"'+sys.argv[1]+'\"'+t[j+12:])" "$K" && unset K && echo stored
+~/sec/plaud-scribe/scripts/set-key elevenlabs
 ```
+
+   Paste or type the key, press Enter, then Ctrl-D. If your terminal will not paste into
+   the VPS, pipe it straight from your local clipboard instead, run on your own machine:
+
+```bash
+pbpaste | ssh ubuntu@<this-host> '~/sec/plaud-scribe/scripts/set-key elevenlabs'
+```
+
+   The same script takes the Anthropic key: `scripts/set-key summary`.
 
 Scribe v2 costs $0.22 per hour of audio (plus $0.05/hour if you fill in `keyterms`).
 

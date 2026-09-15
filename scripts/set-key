@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""Write an API key into config.toml, reading it from stdin so it is never echoed.
+
+    scripts/set-key elevenlabs < /dev/tty      # type or paste it, then Ctrl-D
+    pbpaste | ssh host 'plaud-scribe-set-key elevenlabs'
+
+The key never appears on screen, in the shell history, or in a process argument list.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import sys
+from pathlib import Path
+
+SECTIONS = {
+    "elevenlabs": ("ElevenLabs", "sk_"),
+    "summary": ("Anthropic", "sk-ant-"),
+}
+
+CONFIG = Path(
+    os.environ.get("PLAUD_SCRIBE_CONFIG_DIR", Path.home() / ".config/plaud-scribe")
+) / "config.toml"
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 2 or argv[1] not in SECTIONS:
+        print(f"usage: set-key {{{'|'.join(SECTIONS)}}}", file=sys.stderr)
+        return 2
+    section = argv[1]
+    label, prefix = SECTIONS[section]
+
+    if not CONFIG.exists():
+        print(f"No config at {CONFIG}. Copy config.example.toml there first.", file=sys.stderr)
+        return 1
+
+    key = sys.stdin.read().strip()
+    if not key:
+        print("No key on stdin; nothing written.", file=sys.stderr)
+        return 1
+    if any(c.isspace() for c in key):
+        print("That contains whitespace, so it is probably not just the key.", file=sys.stderr)
+        return 1
+    if not key.startswith(prefix):
+        print(
+            f"Warning: a {label} key usually starts with {prefix!r}. Writing it anyway.",
+            file=sys.stderr,
+        )
+
+    text = CONFIG.read_text()
+    # Anchored to line start: the literal "[summary]" also appears inside a comment.
+    header = re.search(rf"^\[{re.escape(section)}\][ \t]*$", text, re.MULTILINE)
+    if header is None:
+        print(f"No [{section}] section in {CONFIG}", file=sys.stderr)
+        return 1
+    start = header.start()
+    nxt = re.search(r"^\[", text[header.end():], re.MULTILINE)
+    end = header.end() + nxt.start() if nxt else len(text)
+    body, replaced = re.subn(
+        r'^api_key\s*=\s*".*"$',
+        'api_key = "' + key.replace("\\", "\\\\").replace('"', '\\"') + '"',
+        text[start:end],
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if not replaced:
+        print(f"No api_key line under [{section}]", file=sys.stderr)
+        return 1
+
+    CONFIG.write_text(text[:start] + body + text[end:])
+    CONFIG.chmod(0o600)
+    print(f"{label} key stored in {CONFIG} ({len(key)} characters).")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

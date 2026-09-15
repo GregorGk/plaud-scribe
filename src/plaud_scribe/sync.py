@@ -27,7 +27,7 @@ from .stt.elevenlabs import ElevenLabsProvider
 log = logging.getLogger(__name__)
 
 CACHE_VERSION = 1
-BUDGET_WINDOW = timedelta(hours=24)
+DAILY_WINDOW = timedelta(hours=24)
 
 
 @dataclass
@@ -39,6 +39,19 @@ class Rendered:
     speaker_labels: list[str] = field(default_factory=list)
     summary_cost_usd: float = 0.0
     warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class Budget:
+    """What is left under the tightest configured limit."""
+
+    remaining_seconds: float
+    period: str          # "month" or "24h"
+    limit_minutes: float
+
+    @property
+    def remaining_minutes(self) -> float:
+        return self.remaining_seconds / 60
 
 
 @dataclass
@@ -77,6 +90,10 @@ def month_folder(meta: render.RecordingMeta) -> str:
 
 def filename_for(meta: render.RecordingMeta, fmt: str) -> str:
     return f"{basename_for(meta)}.{FORMAT_SUFFIXES[fmt]}"
+
+
+def month_start(now: datetime) -> datetime:
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
 def cache_path(recording_id: str) -> Path:
@@ -299,14 +316,25 @@ class Pipeline:
 
     # --- budget ----------------------------------------------------------
 
-    def remaining_budget_seconds(self) -> float | None:
-        """Audio seconds still transcribable in the rolling window, or None if uncapped."""
-        limit = self.cfg.limits.daily_minutes * 60
-        if limit <= 0:
-            return None
-        since = datetime.now(timezone.utc) - BUDGET_WINDOW
-        used = self.store.transcribed_seconds_since(since.isoformat(timespec="seconds"))
-        return max(0.0, limit - used)
+    def budgets(self) -> list[Budget]:
+        """Every configured limit and what is left under it, tightest last."""
+        now = datetime.now(timezone.utc)
+        windows = [
+            ("month", self.cfg.limits.monthly_minutes, month_start(now)),
+            ("24h", self.cfg.limits.daily_minutes, now - DAILY_WINDOW),
+        ]
+        found = []
+        for period, minutes, since in windows:
+            if minutes <= 0:
+                continue
+            used = self.store.transcribed_seconds_since(since.isoformat(timespec="seconds"))
+            found.append(Budget(max(0.0, minutes * 60 - used), period, minutes))
+        return sorted(found, key=lambda b: b.remaining_seconds, reverse=True)
+
+    def budget(self) -> Budget | None:
+        """The binding limit, or None when nothing is capped."""
+        found = self.budgets()
+        return found[-1] if found else None
 
     # --- top level -------------------------------------------------------
 
@@ -331,18 +359,18 @@ class Pipeline:
 
         needs_transcription = force or not cache_path(recording_id).exists()
         if needs_transcription and not ignore_limits:
-            remaining = self.remaining_budget_seconds()
+            budget = self.budget()
             # A zero duration means Plaud did not report one; let it through rather
             # than stall on a recording whose cost we cannot predict.
-            if remaining is not None and duration > remaining:
+            if budget is not None and duration > budget.remaining_seconds:
                 return SyncResult(
                     recording_id=recording_id,
                     title=title,
                     status="skipped",
                     error=(
-                        f"daily limit: needs {duration / 60:.0f} min, "
-                        f"{remaining / 60:.0f} min left of "
-                        f"{self.cfg.limits.daily_minutes:.0f} min per 24h"
+                        f"limit reached: needs {duration / 60:.0f} min, "
+                        f"{budget.remaining_minutes:.0f} min left of "
+                        f"{budget.limit_minutes:.0f} min per {budget.period}"
                     ),
                 )
 

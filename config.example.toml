@@ -38,10 +38,16 @@ max_output_tokens = 8000
 fallbacks = true
 
 [limits]
-# Audio minutes that may be sent for transcription per rolling 24 hours.
-# Recordings over the limit are held back and retried on the next run, never dropped.
-# 0 disables the limit. Override once with: plaud-scribe sync --ignore-limits
-daily_minutes = 90
+# Ceilings on audio sent for transcription. Whichever is tighter applies.
+# Over-limit recordings are held back and retried later, never dropped.
+# Override once with: plaud-scribe sync --ignore-limits
+#
+# Calendar month, matching how the ElevenLabs key's own usage cap refreshes.
+# 2700 minutes = 45 hours = about $9.90 at $0.22/hour. 0 disables.
+monthly_minutes = 2700
+# Rolling 24h circuit breaker against a runaway loop burning the month at once.
+# Off by default. 0 disables.
+daily_minutes = 0
 
 [segment]
 # A silence longer than this starts a new speaker turn.

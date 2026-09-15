@@ -177,7 +177,7 @@ def cmd_sync(args: argparse.Namespace, cfg: Config) -> int:
             skipped += result.status == "skipped"
         if skipped:
             print(
-                f"{skipped} recording(s) held back by the daily limit; "
+                f"{skipped} recording(s) held back by the audio limit; "
                 "they are retried on the next run, or use --ignore-limits."
             )
         return EXIT_ERROR if failures else EXIT_OK
@@ -219,9 +219,9 @@ def _transcribe_local(
         "duration": 0,
     }
     if args.force or not cache_path(recording_id).exists():
-        remaining = pipeline.remaining_budget_seconds()
-        if remaining is not None and not args.ignore_limits and remaining <= 0:
-            print(f"  skip  {item['name']}: daily audio limit reached; use --ignore-limits")
+        budget = pipeline.budget()
+        if budget is not None and not args.ignore_limits and budget.remaining_seconds <= 0:
+            print(f"  skip  {item['name']}: audio limit reached; use --ignore-limits")
             return EXIT_OK
         transcript = pipeline.provider.transcribe(file_path=str(target))
         pipeline.write_cache(recording_id, item, transcript)
@@ -276,13 +276,13 @@ def cmd_render(args: argparse.Namespace, cfg: Config) -> int:
 def cmd_status(args: argparse.Namespace, cfg: Config) -> int:
     with Store(STATE_DB) as store:
         pipeline = Pipeline(cfg, plaud=None, store=store)
-        remaining = pipeline.remaining_budget_seconds()
-        if remaining is None:
-            print("daily audio limit: none set")
-        else:
+        budgets = pipeline.budgets()
+        if not budgets:
+            print("audio limits: none set")
+        for budget in budgets:
             print(
-                f"daily audio limit: {remaining / 60:.0f} of "
-                f"{cfg.limits.daily_minutes:.0f} minutes left in the next 24h"
+                f"audio limit per {budget.period}: {budget.remaining_minutes:.0f} of "
+                f"{budget.limit_minutes:.0f} minutes left"
             )
         counts = store.counts()
         if not counts:

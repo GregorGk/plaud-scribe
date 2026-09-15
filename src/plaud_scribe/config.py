@@ -91,14 +91,18 @@ class SummaryConfig:
 
 @dataclass
 class LimitsConfig:
-    """Guard rail on how much audio may be sent for transcription.
+    """Ceilings on how much audio may be sent for transcription.
 
-    The ElevenLabs key's own cap is per billing period, so a daily ceiling has to be
-    enforced here. Counted over a rolling 24 hours, not a calendar day.
+    The monthly window is the calendar month, matching how the ElevenLabs key's own
+    usage cap refreshes. The daily window is a rolling 24 hours and is off by default;
+    it exists as a circuit breaker against a runaway loop burning the month in one go.
+    Either limit set to 0 is disabled; whichever is tighter applies.
     """
 
-    # Audio minutes transcribable per rolling 24h. 0 disables the limit.
-    daily_minutes: float = 90.0
+    # Audio minutes transcribable per calendar month. 0 disables.
+    monthly_minutes: float = 2700.0
+    # Audio minutes transcribable per rolling 24h. 0 disables.
+    daily_minutes: float = 0.0
 
 
 @dataclass
@@ -201,8 +205,9 @@ def load(path: Path | None = None) -> Config:
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
     if anthropic_key:
         cfg.summary.api_key = anthropic_key
-    if cfg.limits.daily_minutes < 0:
-        raise ConfigError("[limits] daily_minutes must be 0 (no limit) or positive")
+    for name in ("monthly_minutes", "daily_minutes"):
+        if getattr(cfg.limits, name) < 0:
+            raise ConfigError(f"[limits] {name} must be 0 (no limit) or positive")
     unknown = [f for f in cfg.drive.formats if f not in FORMAT_SUFFIXES]
     if unknown:
         raise ConfigError(

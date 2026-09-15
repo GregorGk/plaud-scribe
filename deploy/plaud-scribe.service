@@ -1,0 +1,31 @@
+[Unit]
+Description=Transcribe new Plaud recordings and file them in Google Drive
+Documentation=file:%h/sec/plaud-scribe/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# `plaud me` (token refresh) needs node on PATH.
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+# Optional: ELEVENLABS_API_KEY=... and ANTHROPIC_API_KEY=... if not kept in config.toml
+EnvironmentFile=-%h/.config/plaud-scribe/env
+ExecStart=%h/sec/plaud-scribe/.venv/bin/plaud-scribe sync
+Nice=10
+TimeoutStartSec=3h
+
+# Hardening: the job needs the network, its own state, and the two token stores.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/plaud-scribe %h/.local/state/plaud-scribe %h/.config/plaud-scribe %h/.plaud
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+# MemoryDenyWriteExecute is deliberately absent: `plaud me` runs node, whose JIT needs it.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM

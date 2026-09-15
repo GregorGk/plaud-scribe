@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodic Plaud transcription sync
+
+[Timer]
+OnCalendar=*:0/30
+RandomizedDelaySec=300
+# Catch up after a reboot or a suspended host.
+Persistent=true
+Unit=plaud-scribe.service
+
+[Install]
+WantedBy=timers.target

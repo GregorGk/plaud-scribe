@@ -1,0 +1,66 @@
+# Copy to ~/.config/plaud-scribe/config.toml and chmod 600.
+
+[elevenlabs]
+# Or leave empty and export ELEVENLABS_API_KEY instead.
+api_key = ""
+model_id = "scribe_v2"
+# 0 means "let the model decide".
+num_speakers = 0
+# Only used when num_speakers is 0. Lower = more speakers predicted. Model default ~0.22.
+diarization_threshold = 0
+# Names, jargon and product terms that recur. Adds $0.05/hour when non-empty.
+keyterms = []
+tag_audio_events = true
+timeout_seconds = 3600
+
+[plaud]
+page_size = 50
+
+[drive]
+root_folder = "Plaud Transcripts"
+# What lands in Drive for every recording. Any of: md, txt, summary, srt, vtt, json
+#   md       Markdown transcript with timestamps and speakers
+#   txt      the same transcript as plain text
+#   summary  a separate Markdown document written by Claude (needs [summary] api_key)
+formats = ["md", "txt", "summary"]
+oauth_port = 8765
+
+[summary]
+# Or leave empty and export ANTHROPIC_API_KEY instead.
+api_key = ""
+model = "claude-opus-5"
+# "auto" writes in the language that dominates the recording. Or a language name/code.
+language = "auto"
+# low | medium | high
+effort = "medium"
+max_output_tokens = 8000
+# If Claude declines a recording, let the API retry it on a fallback model.
+fallbacks = true
+
+[segment]
+# A silence longer than this starts a new speaker turn.
+gap_seconds = 2.0
+max_turn_seconds = 60.0
+
+[language]
+# Languages you actually record in. Add more here when needed (ISO 639-1 codes).
+expected = ["en", "de", "pl", "pt", "ru"]
+tag_segments = true
+# Turns shorter than this are left untagged rather than guessed at.
+min_chars = 12
+
+[speakers]
+# Optional Claude pass that reads the transcript and picks up names people state out
+# loud. Config always wins over it.
+llm_naming = false
+llm_model = "claude-opus-5"
+
+# Diarization numbers speakers in order of first appearance, so "Speaker 1" is whoever
+# talks first — not necessarily you. Map ids to names once you know who is who.
+# Keys accept "speaker_0", "0" or "Speaker 1".
+[speakers.aliases]
+# speaker_0 = "Anna"
+
+# Overrides for one recording, keyed by its Plaud id (see `plaud-scribe list`).
+# [speakers.per_recording.abc123]
+# speaker_1 = "Tomasz"

@@ -1,0 +1,51 @@
+#!/bin/sh
+# `plaud login` on a headless host.
+#
+# The Plaud CLI hands the OAuth URL to a browser opener and only prints it if that
+# opener fails. This box has xdg-open installed, so the open "succeeds", nothing is
+# shown, and the login sits there until it times out after two minutes. This wrapper
+# puts a shim ahead of the real xdg-open. The CLI discards the opener's own output,
+# so the shim writes the URL to a file and this script prints it.
+#
+# The OAuth redirect always goes to localhost:8199, so before running this, open a
+# tunnel from the machine with the browser:
+#
+#     ssh -L 8199:localhost:8199 ubuntu@<this-host>
+
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/plaud-scribe"
+SHIM_DIR="$DATA_DIR/browser-shim"
+URL_FILE="$DATA_DIR/last-auth-url"
+
+mkdir -p "$SHIM_DIR"
+cat > "$SHIM_DIR/xdg-open" <<'SHIM'
+#!/bin/sh
+dir="${XDG_DATA_HOME:-$HOME/.local/share}/plaud-scribe"
+mkdir -p "$dir"
+printf '%s\n' "$1" > "$dir/last-auth-url"
+SHIM
+chmod +x "$SHIM_DIR/xdg-open"
+
+if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q ':8199 '; then
+    echo "Port 8199 is already in use here; another plaud login is probably still running." >&2
+    echo "Stop that one first, then retry." >&2
+    exit 1
+fi
+
+rm -f "$URL_FILE"
+env PATH="$SHIM_DIR:$PATH" BROWSER="$SHIM_DIR/xdg-open" plaud login &
+login_pid=$!
+
+i=0
+while [ "$i" -lt 80 ]; do
+    if [ -s "$URL_FILE" ]; then
+        printf '\n  ==== Open this URL in your LOCAL browser ====\n\n  %s\n\n' "$(cat "$URL_FILE")"
+        printf '  Two minutes to approve it. The tunnel on port 8199 must be open.\n'
+        printf '  ============================================================\n\n'
+        break
+    fi
+    kill -0 "$login_pid" 2>/dev/null || break
+    sleep 0.25
+    i=$((i + 1))
+done
+
+wait "$login_pid"

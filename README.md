@@ -92,19 +92,26 @@ Summaries are written in the language that dominates the recording; set
 
 ### 3. Sign in to Plaud
 
-`plaud login` opens a browser and expects the callback on **localhost:8199**. This host is
-headless, so tunnel that port from your desktop first, then paste the printed URL into
-your local browser:
+The OAuth callback always goes to **localhost:8199**, so tunnel that port from the
+machine that has the browser, and stay in that session:
 
 ```bash
 ssh -L 8199:localhost:8199 ubuntu@<this-host>
 ```
 
+Then run the wrapper rather than `plaud login` directly:
+
 ```bash
-plaud login
+~/sec/plaud-scribe/scripts/plaud-login
 ```
 
-The token lands in `~/.plaud/tokens.json` and refreshes itself from then on.
+It prints the authorization URL; open it in your local browser and approve. You have two
+minutes. The token lands in `~/.plaud/tokens.json` and refreshes itself from then on.
+
+Plain `plaud login` does not work on a headless host. It only prints the URL if opening a
+browser fails, and since `xdg-open` is installed here the open appears to succeed, so the
+URL is never shown and the login sits until it times out. The wrapper puts a shim ahead
+of `xdg-open` to capture the URL and print it.
 
 ### 4. Authorise Google Drive
 

@@ -37,6 +37,12 @@ max_output_tokens = 8000
 # If Claude declines a recording, let the API retry it on a fallback model.
 fallbacks = true
 
+[limits]
+# Audio minutes that may be sent for transcription per rolling 24 hours.
+# Recordings over the limit are held back and retried on the next run, never dropped.
+# 0 disables the limit. Override once with: plaud-scribe sync --ignore-limits
+daily_minutes = 90
+
 [segment]
 # A silence longer than this starts a new speaker turn.
 gap_seconds = 2.0

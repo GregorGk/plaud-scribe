@@ -52,8 +52,20 @@ Your config lives at `~/.config/plaud-scribe/config.toml` (already created from
 ### 1. ElevenLabs API key (transcription)
 
 1. Sign in at https://elevenlabs.io, open your profile menu, then **API Keys**.
-2. **Create API Key**. Restrict it to *Speech to Text* if the UI offers scopes.
-3. Put it in `~/.config/plaud-scribe/config.toml` under `[elevenlabs] api_key = "..."`.
+2. **Create API Key**, and set the scopes as follows. The app calls exactly one endpoint,
+   `speech_to_text.convert`, so anything else only widens the damage if the key leaks:
+   * **Speech to Text → Access**
+   * every other endpoint, and every row under Administration → **No Access**
+3. Leave **Auto-disable if leaked** on. Under **Restrict by IP address** you can pin the
+   key to this host's address, since nothing else uses it. Note that transcription then
+   stops if the VPS address ever changes.
+4. The **Usage Limits (Credits)** field is per billing period, so it cannot express a
+   daily cap. Set it as a loose monthly backstop; the real ceiling is `[limits]` below.
+5. Store the key without it appearing on screen or in your shell history:
+
+```bash
+read -rs -p "ElevenLabs key: " K && python3 -c "import sys,pathlib;p=pathlib.Path.home()/'.config/plaud-scribe/config.toml';t=p.read_text();i=t.index('[elevenlabs]');j=t.index('api_key = \"\"',i);p.write_text(t[:j]+'api_key = \"'+sys.argv[1]+'\"'+t[j+12:])" "$K" && unset K && echo stored
+```
 
 Scribe v2 costs $0.22 per hour of audio (plus $0.05/hour if you fill in `keyterms`).
 
@@ -187,6 +199,19 @@ regenerated because the transcript text changed.
 Optionally set `[speakers] llm_naming = true` to let Claude pick up names people state
 out loud (introductions, being addressed by name). Config always wins over it.
 
+### Capping how much gets transcribed
+
+`[limits] daily_minutes` is a ceiling on audio sent for transcription, counted over a
+rolling 24 hours rather than a calendar day. It defaults to 90 minutes.
+
+A recording that would exceed what is left is **held back, not dropped**: it stays pending
+and the next run picks it up once the window has moved on. `plaud-scribe status` shows
+what is left, and `sync --ignore-limits` overrides it for one run.
+
+The limit lives here rather than on the ElevenLabs key because the key's own usage cap is
+per billing period and cannot express a daily figure. Re-rendering and re-uploading never
+consume budget, since no audio is sent. Set `daily_minutes = 0` to remove the limit.
+
 ### Adding a language
 
 Append its ISO 639-1 code to `[language] expected`. Scribe transcribes every language
@@ -199,6 +224,7 @@ regardless; this list only controls which languages the per-turn tags may choose
 | Scribe v2 transcription | $0.22 per audio hour ($0.27 with `keyterms`) |
 | Claude summary (`claude-opus-5`) | a few cents per recording |
 | Re-rendering | free |
+| Default ceiling | 90 audio minutes per rolling 24h (`[limits] daily_minutes`) |
 
 `plaud-scribe status` shows month-to-date spend for both.
 
@@ -221,6 +247,7 @@ run against a checked-in fixture and a fake Claude client. No network, no keys.
 | `! summary skipped: ...` | Transcript uploaded, summary not. Fix the cause (usually the key), then `plaud-scribe render <id> --upload` |
 | Speakers split or merged | Set `[elevenlabs] num_speakers`, or lower/raise `diarization_threshold`, then `transcribe <id> --force` |
 | Wrong language tags on short turns | Raise `[language] min_chars` |
+| `skip ... daily limit` | Expected: the 24h audio budget is spent. It retries itself, or force it with `sync --ignore-limits` |
 | Timer never fires when logged out | `sudo loginctl enable-linger ubuntu` |
 
 ## Swapping the transcription engine

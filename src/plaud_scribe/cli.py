@@ -52,6 +52,8 @@ def _report(result: SyncResult) -> None:
         print(f"  ok    {result.title}  ({'; '.join(details)})")
         for warning in result.warnings:
             print(f"        ! {warning}")
+    elif result.status == "skipped":
+        print(f"  skip  {result.title}: {result.error}")
     else:
         print(f"  FAIL  {result.title}: {result.error}")
 
@@ -165,11 +167,19 @@ def cmd_sync(args: argparse.Namespace, cfg: Config) -> int:
                 )
             return EXIT_OK
 
-        failures = 0
+        failures = skipped = 0
         for item in pending:
-            result = pipeline.process(item, upload=not args.no_upload)
+            result = pipeline.process(
+                item, upload=not args.no_upload, ignore_limits=args.ignore_limits
+            )
             _report(result)
-            failures += result.status != "done"
+            failures += result.counts_as_failure
+            skipped += result.status == "skipped"
+        if skipped:
+            print(
+                f"{skipped} recording(s) held back by the daily limit; "
+                "they are retried on the next run, or use --ignore-limits."
+            )
         return EXIT_ERROR if failures else EXIT_OK
 
 
@@ -182,7 +192,12 @@ def cmd_transcribe(args: argparse.Namespace, cfg: Config) -> int:
             pipeline = Pipeline(cfg, plaud=client, store=store)
             item = client.get_file(args.target)
             item.setdefault("id", args.target)
-            result = pipeline.process(item, upload=not args.no_upload, force=args.force)
+            result = pipeline.process(
+                item,
+                upload=not args.no_upload,
+                force=args.force,
+                ignore_limits=args.ignore_limits,
+            )
             _report(result)
             for extension, path in sorted(result.local_files.items()):
                 print(f"        {extension}: {path}")
@@ -204,6 +219,10 @@ def _transcribe_local(
         "duration": 0,
     }
     if args.force or not cache_path(recording_id).exists():
+        remaining = pipeline.remaining_budget_seconds()
+        if remaining is not None and not args.ignore_limits and remaining <= 0:
+            print(f"  skip  {item['name']}: daily audio limit reached; use --ignore-limits")
+            return EXIT_OK
         transcript = pipeline.provider.transcribe(file_path=str(target))
         pipeline.write_cache(recording_id, item, transcript)
     rendered = pipeline.render_from_cache(recording_id)
@@ -256,6 +275,15 @@ def cmd_render(args: argparse.Namespace, cfg: Config) -> int:
 
 def cmd_status(args: argparse.Namespace, cfg: Config) -> int:
     with Store(STATE_DB) as store:
+        pipeline = Pipeline(cfg, plaud=None, store=store)
+        remaining = pipeline.remaining_budget_seconds()
+        if remaining is None:
+            print("daily audio limit: none set")
+        else:
+            print(
+                f"daily audio limit: {remaining / 60:.0f} of "
+                f"{cfg.limits.daily_minutes:.0f} minutes left in the next 24h"
+            )
         counts = store.counts()
         if not counts:
             print("Nothing recorded yet. Run `plaud-scribe sync`.")
@@ -310,12 +338,18 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--dry-run", action="store_true")
     sync.add_argument("--retry-failed", action="store_true")
     sync.add_argument("--no-upload", action="store_true")
+    sync.add_argument(
+        "--ignore-limits", action="store_true", help="transcribe even if [limits] is exhausted"
+    )
     sync.set_defaults(func=cmd_sync)
 
     transcribe = sub.add_parser("transcribe", help="one recording id, or a local audio file")
     transcribe.add_argument("target")
     transcribe.add_argument("--no-upload", action="store_true")
     transcribe.add_argument("--force", action="store_true", help="re-transcribe, ignoring the cache")
+    transcribe.add_argument(
+        "--ignore-limits", action="store_true", help="transcribe even if [limits] is exhausted"
+    )
     transcribe.set_defaults(func=cmd_transcribe)
 
     rerender = sub.add_parser("render", help="re-render from the cached transcript (free)")

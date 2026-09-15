@@ -8,7 +8,7 @@ import re
 import tempfile
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +27,7 @@ from .stt.elevenlabs import ElevenLabsProvider
 log = logging.getLogger(__name__)
 
 CACHE_VERSION = 1
+BUDGET_WINDOW = timedelta(hours=24)
 
 
 @dataclass
@@ -52,6 +53,10 @@ class SyncResult:
     local_files: dict[str, str] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     error: str | None = None
+
+    @property
+    def counts_as_failure(self) -> bool:
+        return self.status == "failed"
 
 
 def slugify(value: str, *, limit: int = 60) -> str:
@@ -292,6 +297,17 @@ class Pipeline:
             )
         return uploaded
 
+    # --- budget ----------------------------------------------------------
+
+    def remaining_budget_seconds(self) -> float | None:
+        """Audio seconds still transcribable in the rolling window, or None if uncapped."""
+        limit = self.cfg.limits.daily_minutes * 60
+        if limit <= 0:
+            return None
+        since = datetime.now(timezone.utc) - BUDGET_WINDOW
+        used = self.store.transcribed_seconds_since(since.isoformat(timespec="seconds"))
+        return max(0.0, limit - used)
+
     # --- top level -------------------------------------------------------
 
     def process(
@@ -300,6 +316,7 @@ class Pipeline:
         *,
         upload: bool = True,
         force: bool = False,
+        ignore_limits: bool = False,
     ) -> SyncResult:
         recording_id = item["id"]
         title = item.get("name") or recording_id
@@ -312,8 +329,25 @@ class Pipeline:
             duration,
         )
 
+        needs_transcription = force or not cache_path(recording_id).exists()
+        if needs_transcription and not ignore_limits:
+            remaining = self.remaining_budget_seconds()
+            # A zero duration means Plaud did not report one; let it through rather
+            # than stall on a recording whose cost we cannot predict.
+            if remaining is not None and duration > remaining:
+                return SyncResult(
+                    recording_id=recording_id,
+                    title=title,
+                    status="skipped",
+                    error=(
+                        f"daily limit: needs {duration / 60:.0f} min, "
+                        f"{remaining / 60:.0f} min left of "
+                        f"{self.cfg.limits.daily_minutes:.0f} min per 24h"
+                    ),
+                )
+
         try:
-            if force or not cache_path(recording_id).exists():
+            if needs_transcription:
                 transcript = self.transcribe(item)
                 self.write_cache(recording_id, item, transcript)
             rendered = self.render_from_cache(recording_id)
@@ -323,6 +357,7 @@ class Pipeline:
 
             self.store.mark_done(
                 recording_id,
+                duration_seconds=rendered.meta.duration_seconds or None,
                 provider=rendered.meta.provider,
                 model_id=rendered.meta.model_id,
                 cost_usd=cost,

@@ -121,12 +121,14 @@ class Store:
             """
             UPDATE recordings SET
                 status = ?, error = NULL, attempts = attempts + 1,
+                duration_seconds = COALESCE(?, duration_seconds),
                 provider = ?, model_id = ?, cost_usd = ?, languages = ?,
                 speaker_count = ?, transcribed_at = ?, uploaded_at = ?, drive_files = ?
             WHERE id = ?
             """,
             (
                 STATUS_DONE,
+                fields.get("duration_seconds"),
                 fields.get("provider"),
                 fields.get("model_id"),
                 fields.get("cost_usd"),
@@ -166,6 +168,19 @@ class Store:
             "SELECT * FROM recordings ORDER BY COALESCE(recorded_at, '') DESC LIMIT ?", (limit,)
         ).fetchall()
         return [Record(**dict(row)) for row in rows]
+
+    def transcribed_seconds_since(self, iso_date: str) -> float:
+        """Audio seconds actually sent to the STT provider since `iso_date`.
+
+        Keyed on transcribed_at, so re-rendering or re-uploading a cached transcript
+        never consumes budget a second time.
+        """
+        row = self.conn.execute(
+            "SELECT COALESCE(SUM(duration_seconds), 0) AS total FROM recordings "
+            "WHERE status = ? AND transcribed_at >= ?",
+            (STATUS_DONE, iso_date),
+        ).fetchone()
+        return float(row["total"] or 0.0)
 
     def spend_since(self, iso_date: str) -> float:
         row = self.conn.execute(

@@ -90,6 +90,18 @@ class SummaryConfig:
 
 
 @dataclass
+class LimitsConfig:
+    """Guard rail on how much audio may be sent for transcription.
+
+    The ElevenLabs key's own cap is per billing period, so a daily ceiling has to be
+    enforced here. Counted over a rolling 24 hours, not a calendar day.
+    """
+
+    # Audio minutes transcribable per rolling 24h. 0 disables the limit.
+    daily_minutes: float = 90.0
+
+
+@dataclass
 class SegmentConfig:
     gap_seconds: float = 2.0
     max_turn_seconds: float = 60.0
@@ -116,6 +128,7 @@ class Config:
     plaud: PlaudConfig = field(default_factory=PlaudConfig)
     drive: DriveConfig = field(default_factory=DriveConfig)
     segment: SegmentConfig = field(default_factory=SegmentConfig)
+    limits: LimitsConfig = field(default_factory=LimitsConfig)
     language: LanguageConfig = field(default_factory=LanguageConfig)
     speakers: SpeakerConfig = field(default_factory=SpeakerConfig)
     summary: SummaryConfig = field(default_factory=SummaryConfig)
@@ -170,6 +183,7 @@ def load(path: Path | None = None) -> Config:
     _apply(cfg.plaud, _section(raw, "plaud"), "plaud")
     _apply(cfg.drive, _section(raw, "drive"), "drive")
     _apply(cfg.segment, _section(raw, "segment"), "segment")
+    _apply(cfg.limits, _section(raw, "limits"), "limits")
     _apply(cfg.language, _section(raw, "language"), "language")
     _apply(cfg.summary, _section(raw, "summary"), "summary")
 
@@ -187,6 +201,8 @@ def load(path: Path | None = None) -> Config:
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
     if anthropic_key:
         cfg.summary.api_key = anthropic_key
+    if cfg.limits.daily_minutes < 0:
+        raise ConfigError("[limits] daily_minutes must be 0 (no limit) or positive")
     unknown = [f for f in cfg.drive.formats if f not in FORMAT_SUFFIXES]
     if unknown:
         raise ConfigError(

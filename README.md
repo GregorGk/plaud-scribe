@@ -69,8 +69,8 @@ Your config lives at `~/.config/plaud-scribe/config.toml` (already created from
 ~/sec/plaud-scribe/scripts/set-key elevenlabs
 ```
 
-   Paste or type the key, press Enter, then Ctrl-D. If your terminal will not paste into
-   the VPS, pipe it straight from your local clipboard instead, run on your own machine:
+   It prompts, and the key is not echoed as you paste. If your terminal will not paste
+   into the VPS at all, pipe it from your local clipboard instead, run on your own machine:
 
 ```bash
 pbpaste | ssh ubuntu@<this-host> '~/sec/plaud-scribe/scripts/set-key elevenlabs'

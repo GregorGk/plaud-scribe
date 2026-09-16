@@ -35,7 +35,18 @@ def main(argv: list[str]) -> int:
         print(f"No config at {CONFIG}. Copy config.example.toml there first.", file=sys.stderr)
         return 1
 
-    key = sys.stdin.read().strip()
+    if sys.stdin.isatty():
+        # A plain read would sit on a blank screen and the terminal would echo the
+        # key as it is pasted; getpass prompts and turns echo off.
+        import getpass
+
+        try:
+            key = getpass.getpass(f"Paste the {label} key (hidden), then Enter: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nAborted; nothing written.", file=sys.stderr)
+            return 1
+    else:
+        key = sys.stdin.read().strip()
     if not key:
         print("No key on stdin; nothing written.", file=sys.stderr)
         return 1

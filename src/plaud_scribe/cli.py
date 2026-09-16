@@ -292,7 +292,10 @@ def cmd_status(args: argparse.Namespace, cfg: Config) -> int:
         month_start = datetime.now(timezone.utc).replace(
             day=1, hour=0, minute=0, second=0, microsecond=0
         )
-        print(f"month-to-date spend (transcription + summaries): ${store.spend_since(month_start.isoformat()):.2f}")
+        spend = store.spend_since(month_start.isoformat())
+        # Two decimals would render a real but small spend as "$0.00".
+        rendered_spend = f"${spend:.2f}" if spend >= 0.01 or spend == 0 else f"${spend:.4f}"
+        print(f"month-to-date spend (transcription + summaries): {rendered_spend}")
         print()
         print(f"{'recorded':<17} {'state':<7} {'cost':>6}  {'langs':<12} name")
         for record in store.recent(args.limit):

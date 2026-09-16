@@ -12,6 +12,16 @@ from .stt.base import Turn
 SUBTITLE_LINE_WIDTH = 42
 
 
+def quote(value: str) -> str:
+    """Double-quoted scalar for the front matter, with diacritics left intact.
+
+    json.dumps escapes non-ASCII by default, which turns "nieruchomości" into
+    "nieruchomo\\u015bci". JSON string syntax is a subset of YAML's, so the quoting
+    rules still hold with ensure_ascii off.
+    """
+    return json.dumps(value, ensure_ascii=False)
+
+
 @dataclass
 class RecordingMeta:
     recording_id: str
@@ -60,14 +70,14 @@ def render_markdown(
     speakers: list[str] | None = None,
 ) -> str:
     front: list[str] = ["---"]
-    front.append(f"title: {json.dumps(meta.title)}")
+    front.append(f"title: {quote(meta.title)}")
     if meta.recorded_at:
         front.append(f"recorded: {meta.recorded_at.isoformat()}")
     front.append(f"duration: {format_duration(meta.duration_seconds)}")
     if languages:
         front.append(f"languages: [{', '.join(languages)}]")
     if speakers:
-        front.append(f"speakers: [{', '.join(json.dumps(s) for s in speakers)}]")
+        front.append(f"speakers: [{', '.join(quote(s) for s in speakers)}]")
     front.append(f"plaud_id: {meta.recording_id}")
     front.append(f"model: {meta.provider}/{meta.model_id}")
     if meta.transcribed_at:

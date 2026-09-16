@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import RAW_DIR, Config
-from .render import RecordingMeta, format_duration, transcript_for_llm
+from .render import RecordingMeta, format_duration, quote, transcript_for_llm
 from .stt.base import Turn
 
 log = logging.getLogger(__name__)
@@ -216,7 +216,7 @@ def _run(client, request: dict, *, fallbacks: bool):
 
 
 def render_document(summary: Summary, meta: RecordingMeta) -> str:
-    front = ["---", f"title: {json.dumps(meta.title)}"]
+    front = ["---", f"title: {quote(meta.title)}"]
     if meta.recorded_at:
         front.append(f"recorded: {meta.recorded_at.isoformat()}")
     front.append(f"duration: {format_duration(meta.duration_seconds)}")

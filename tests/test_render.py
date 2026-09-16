@@ -113,3 +113,22 @@ def test_llm_transcript_is_one_line_per_turn(transcript):
     body = render.transcript_for_llm(turns)
     assert len(body.splitlines()) == len(turns)
     assert re.match(r"^\[\d\d:\d\d:\d\d\] Speaker \d+: ", body.splitlines()[0])
+
+
+def test_front_matter_keeps_diacritics(transcript, envelope):
+    """Front matter must be readable, not \\uXXXX escapes."""
+    turns = build_turns(transcript.words)
+    meta = _meta(envelope)
+    meta.title = "Telefon: Decyzja w sprawie nieruchomości przy ul. Rożanowicza"
+    speakers.apply_names(turns, {"speaker_0": "Grzegorz Górkiewicz"})
+
+    text = render.render_markdown(turns, meta, speakers=speakers.summarise(turns))
+
+    assert 'title: "Telefon: Decyzja w sprawie nieruchomości przy ul. Rożanowicza"' in text
+    assert '"Grzegorz Górkiewicz"' in text
+    assert "\\u" not in text
+
+
+def test_quote_still_escapes_what_it_must():
+    assert render.quote('a "quoted" word') == '"a \\"quoted\\" word"'
+    assert render.quote("tab\there") == '"tab\\there"'

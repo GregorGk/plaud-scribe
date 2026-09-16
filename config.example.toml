@@ -19,10 +19,9 @@ page_size = 50
 [drive]
 root_folder = "Plaud Transcripts"
 # What lands in Drive for every recording. Any of: md, txt, summary, srt, vtt, json
-#   md       Markdown transcript with timestamps and speakers
-#   txt      the same transcript as plain text
+#   txt      transcript with timestamps and speakers, plain text
 #   summary  a separate Markdown document written by Claude (needs [summary] api_key)
-formats = ["md", "txt", "summary"]
+formats = ["txt", "summary"]
 oauth_port = 8765
 
 [summary]
@@ -36,6 +35,11 @@ effort = "medium"
 max_output_tokens = 8000
 # If Claude declines a recording, let the API retry it on a fallback model.
 fallbacks = true
+
+[sync]
+# Hard floor: recordings made before this date are never transcribed, no matter how
+# far back a run looks. Leave empty to allow the whole history. Format YYYY-MM-DD, UTC.
+start_date = "2026-09-16"
 
 [limits]
 # Ceilings on audio sent for transcription. Whichever is tighter applies.

@@ -55,8 +55,9 @@ def test_example_config_loads(tmp_path):
     assert cfg.elevenlabs.num_speakers is None
     assert cfg.elevenlabs.diarization_threshold is None
     assert cfg.language.expected == ["en", "de", "pl", "pt", "ru"]
-    assert cfg.drive.formats == ["md", "txt", "summary"]
+    assert cfg.drive.formats == ["txt", "summary"]
     assert cfg.summary_enabled is True
+    assert cfg.sync.start_date == "2026-09-16"
     assert cfg.summary.model == "claude-sonnet-5"
     assert cfg.speakers.llm_naming is False
 
@@ -102,3 +103,54 @@ def test_keyterms_change_the_hourly_rate():
     assert cfg.elevenlabs.hourly_rate() == 0.22
     cfg.elevenlabs.keyterms = ["Kubernetes"]
     assert round(cfg.elevenlabs.hourly_rate(), 4) == 0.27
+
+
+def _cfg_with_floor(date):
+    from plaud_scribe.config import Config
+    cfg = Config()
+    cfg.sync.start_date = date
+    return cfg
+
+
+def test_start_date_parses_to_utc_midnight():
+    from datetime import datetime, timezone
+    cfg = _cfg_with_floor("2026-09-16")
+    assert cfg.sync.floor() == datetime(2026, 9, 16, tzinfo=timezone.utc)
+    assert _cfg_with_floor("  ").sync.floor() is None
+
+
+def test_bad_start_date_is_rejected_at_load(tmp_path):
+    import pytest
+    from plaud_scribe import config as config_module
+
+    target = tmp_path / "config.toml"
+    target.write_text('[sync]\nstart_date = "16/09/2026"\n')
+    with pytest.raises(config_module.ConfigError, match="YYYY-MM-DD"):
+        config_module.load(target)
+
+
+def test_select_never_reaches_behind_the_start_date(tmp_path, monkeypatch):
+    """Even --all must not pull in recordings from before the floor."""
+    from plaud_scribe import sync as sync_module
+    from plaud_scribe.state import Store
+
+    monkeypatch.setattr(sync_module, "RAW_DIR", tmp_path)
+    feed = [
+        {"id": "new2", "name": "after",  "start_at": "2026-09-20T10:00:00Z", "duration": 60_000},
+        {"id": "new1", "name": "on the day", "start_at": "2026-09-16T00:00:01Z", "duration": 60_000},
+        {"id": "old1", "name": "before", "start_at": "2026-09-15T23:59:59Z", "duration": 60_000},
+        {"id": "old2", "name": "long before", "start_at": "2026-06-01T10:00:00Z", "duration": 60_000},
+    ]
+
+    class FakePlaud:
+        def iter_files(self, *, since=None, **kw):
+            for item in feed:
+                yield item
+
+    with Store(tmp_path / "s.db") as store:
+        pipeline = sync_module.Pipeline(
+            _cfg_with_floor("2026-09-16"), plaud=FakePlaud(), store=store
+        )
+        picked = [i["id"] for i in pipeline.select(since=None)]
+
+    assert picked == ["new2", "new1"], "anything before the floor must be dropped"

@@ -6,6 +6,7 @@ import logging
 import os
 import tomllib
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 CONFIG_DIR = Path(os.environ.get("PLAUD_SCRIBE_CONFIG_DIR", Path.home() / ".config/plaud-scribe"))
@@ -62,7 +63,7 @@ FORMAT_SUFFIXES = {
     "vtt": "vtt",
     "json": "json",
 }
-DEFAULT_FORMATS = ["md", "txt", "summary"]
+DEFAULT_FORMATS = ["txt", "summary"]
 
 
 @dataclass
@@ -133,6 +134,30 @@ class LimitsConfig:
 
 
 @dataclass
+class SyncConfig:
+    """Which recordings `sync` is allowed to touch.
+
+    start_date is a hard floor, not a rolling window: anything recorded before it is
+    never transcribed, however far back a run happens to look. That keeps an old archive
+    out of the way permanently, and survives the host being off for a while.
+    """
+
+    # "YYYY-MM-DD", in UTC. Empty means no floor.
+    start_date: str = ""
+
+    def floor(self) -> "datetime | None":
+        if not self.start_date.strip():
+            return None
+        try:
+            parsed = datetime.strptime(self.start_date.strip(), "%Y-%m-%d")
+        except ValueError as err:
+            raise ConfigError(
+                f'[sync] start_date must be YYYY-MM-DD, got {self.start_date!r}'
+            ) from err
+        return parsed.replace(tzinfo=timezone.utc)
+
+
+@dataclass
 class SegmentConfig:
     gap_seconds: float = 2.0
     max_turn_seconds: float = 60.0
@@ -158,6 +183,7 @@ class Config:
     elevenlabs: ElevenLabsConfig = field(default_factory=ElevenLabsConfig)
     plaud: PlaudConfig = field(default_factory=PlaudConfig)
     drive: DriveConfig = field(default_factory=DriveConfig)
+    sync: SyncConfig = field(default_factory=SyncConfig)
     segment: SegmentConfig = field(default_factory=SegmentConfig)
     limits: LimitsConfig = field(default_factory=LimitsConfig)
     language: LanguageConfig = field(default_factory=LanguageConfig)
@@ -213,6 +239,7 @@ def load(path: Path | None = None) -> Config:
     _apply(cfg.elevenlabs, _section(raw, "elevenlabs"), "elevenlabs")
     _apply(cfg.plaud, _section(raw, "plaud"), "plaud")
     _apply(cfg.drive, _section(raw, "drive"), "drive")
+    _apply(cfg.sync, _section(raw, "sync"), "sync")
     _apply(cfg.segment, _section(raw, "segment"), "segment")
     _apply(cfg.limits, _section(raw, "limits"), "limits")
     _apply(cfg.language, _section(raw, "language"), "language")
@@ -232,6 +259,7 @@ def load(path: Path | None = None) -> Config:
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
     if anthropic_key:
         cfg.summary.api_key = anthropic_key
+    cfg.sync.floor()  # validate the date format at load time, not mid-run
     for name in ("monthly_minutes", "daily_minutes"):
         if getattr(cfg.limits, name) < 0:
             raise ConfigError(f"[limits] {name} must be 0 (no limit) or positive")

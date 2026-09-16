@@ -466,12 +466,25 @@ class Pipeline:
         limit: int | None = None,
         retry_failed: bool = False,
     ) -> list[dict[str, Any]]:
-        """Recordings that still need work, newest first."""
+        """Recordings that still need work, newest first.
+
+        The configured start_date wins over any wider window the caller asks for, so
+        `--all` and a long `--days` still cannot reach behind it.
+        """
+        floor = self.cfg.sync.floor()
+        if floor is not None:
+            since = max(since, floor) if since else floor
         selected = []
         for item in self.plaud.iter_files(since=since):
             recording_id = item.get("id")
             if not recording_id:
                 continue
+            if floor is not None:
+                recorded = parse_timestamp(item.get("start_at") or item.get("created_at"))
+                # Checked per item as well: iter_files stops on the first older entry,
+                # which only holds if the feed is strictly ordered.
+                if recorded is not None and recorded < floor:
+                    continue
             record = self.store.get(recording_id)
             done = record is not None and record.status == "done"
             failed = record is not None and record.status == "failed"

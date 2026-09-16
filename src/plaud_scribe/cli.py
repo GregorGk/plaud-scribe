@@ -72,6 +72,12 @@ def cmd_doctor(args: argparse.Namespace, cfg: Config) -> int:
     print("plaud-scribe doctor")
     check("config file", cfg.path.exists(), str(cfg.path))
     check("output formats", True, ", ".join(cfg.drive.formats))
+    floor = cfg.sync.floor()
+    check(
+        "sync window",
+        True,
+        f"only recordings from {floor.date()} onward" if floor else "no start date set",
+    )
     check(
         "ElevenLabs API key",
         bool(cfg.elevenlabs.api_key),

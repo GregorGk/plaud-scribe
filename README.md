@@ -154,8 +154,9 @@ ssh -L 8765:localhost:8765 ubuntu@<this-host>
 ~/sec/plaud-scribe/.venv/bin/plaud-scribe sync
 ```
 
-The first `sync` processes the last 7 days. When you are happy with the output, start the
-timer (every 30 minutes, catches up after a reboot):
+`[sync] start_date` in the config is a hard floor: anything recorded before it is never
+transcribed, no matter how far back a run looks, so an existing archive stays untouched.
+Then start the timer (every 30 minutes, catches up after a reboot):
 
 ```bash
 systemctl --user enable --now plaud-scribe.timer
@@ -269,6 +270,8 @@ run against a checked-in fixture and a fake Claude client. No network, no keys.
 | Wrong language tags on short turns | Raise `[language] min_chars` |
 | `skip ... limit reached` | Expected: the audio budget is spent. It retries itself, or force it with `sync --ignore-limits` |
 | Timer never fires when logged out | `sudo loginctl enable-linger ubuntu` |
+| `status=218/CAPABILITIES` | A hardening directive the user manager cannot apply. `ProtectKernelModules` is the usual one; it is already omitted |
+| Timer runs but nothing happens | Expected if every recording predates `[sync] start_date` |
 
 ## Privacy
 

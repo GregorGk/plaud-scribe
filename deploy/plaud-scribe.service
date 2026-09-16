@@ -10,7 +10,9 @@ Type=oneshot
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 # Optional: ELEVENLABS_API_KEY=... and ANTHROPIC_API_KEY=... if not kept in config.toml
 EnvironmentFile=-%h/.config/plaud-scribe/env
-ExecStart=%h/sec/plaud-scribe/.venv/bin/plaud-scribe sync
+# A wide window so nothing is missed after downtime; [sync] start_date is
+# what actually bounds this, and the state db stops any repeat work.
+ExecStart=%h/sec/plaud-scribe/.venv/bin/plaud-scribe sync --days 30
 Nice=10
 TimeoutStartSec=3h
 
@@ -21,7 +23,9 @@ ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=%h/.local/share/plaud-scribe %h/.local/state/plaud-scribe %h/.config/plaud-scribe %h/.plaud
 ProtectKernelTunables=true
-ProtectKernelModules=true
+# ProtectKernelModules is omitted: it drops CAP_SYS_MODULE from the bounding set, which
+# an unprivileged user manager cannot do here (exit 218/CAPABILITIES). No loss, since an
+# unprivileged process cannot load modules anyway.
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 RestrictRealtime=true

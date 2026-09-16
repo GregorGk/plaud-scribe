@@ -270,6 +270,10 @@ run against a checked-in fixture and a fake Claude client. No network, no keys.
 | `skip ... limit reached` | Expected: the audio budget is spent. It retries itself, or force it with `sync --ignore-limits` |
 | Timer never fires when logged out | `sudo loginctl enable-linger ubuntu` |
 
+## Privacy
+
+See [PRIVACY.md](PRIVACY.md). Single user, three processors, `drive.file` scope only.
+
 ## Swapping the transcription engine
 
 `stt/base.py` defines the `SttProvider` protocol; everything downstream works on

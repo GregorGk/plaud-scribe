@@ -188,10 +188,8 @@ def generate(turns: list[Turn], meta: RecordingMeta, cfg: Config) -> Summary:
         raise SummaryError("Claude returned no text")
 
     usage = response.usage
-    cost = (
-        usage.input_tokens * cfg.summary.input_price_per_mtok
-        + usage.output_tokens * cfg.summary.output_price_per_mtok
-    ) / 1_000_000
+    price_in, price_out = cfg.summary.prices()
+    cost = (usage.input_tokens * price_in + usage.output_tokens * price_out) / 1_000_000
     served_by = getattr(response, "model", None)
     return Summary(
         text=text,

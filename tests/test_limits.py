@@ -152,3 +152,35 @@ def test_cached_transcript_is_free(store, monkeypatch, tmp_path):
         {"id": "cached", "name": "Cached", "duration": 60 * 60_000}, upload=False
     )
     assert result.status != "skipped"
+
+
+def test_rerender_keeps_the_original_transcription_time(store, monkeypatch, tmp_path):
+    """Resetting transcribed_at would charge old audio against today's budget again."""
+    from datetime import datetime, timezone
+
+    from plaud_scribe import sync
+    from plaud_scribe.render import RecordingMeta
+
+    monkeypatch.setattr(sync, "RAW_DIR", tmp_path)
+    cfg = Config()
+    long_ago = datetime.now(timezone.utc) - timedelta(days=40)
+    _record(store, "old", minutes=100, when=long_ago)
+    pipeline = _pipeline(cfg, store)
+    assert pipeline.budget().remaining_minutes == 2700  # last month, already forgotten
+
+    rendered = sync.Rendered(
+        meta=RecordingMeta(
+            recording_id="old", title="old", recorded_at=long_ago,
+            duration_seconds=100 * 60, provider="elevenlabs", model_id="scribe_v2",
+            transcribed_at=long_ago,
+        ),
+        turns=[], documents={}, summary_cost_usd=0.008,
+    )
+    total = pipeline.record_render(rendered)
+
+    assert store.get("old").transcribed_at.startswith(long_ago.isoformat()[:10])
+    # Still outside the window, so the budget is untouched by a re-render.
+    assert pipeline.budget().remaining_minutes == 2700
+    # And the summary charge was added to the running total, not dropped.
+    assert total == pytest.approx(0.1 + 0.008)
+    assert store.get("old").cost_usd == pytest.approx(0.108)

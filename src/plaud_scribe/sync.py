@@ -314,6 +314,40 @@ class Pipeline:
             )
         return uploaded
 
+    def record_render(
+        self, rendered: Rendered, *, drive_files: dict[str, str] | None = None
+    ) -> float:
+        """Persist a re-render and return the recording's new total cost.
+
+        Two things matter here. The transcription timestamp must survive, because the
+        audio budget is measured from it and resetting it would charge an old recording
+        against today's window a second time. And a freshly generated summary costs real
+        money, so it is added to the running total rather than discarded.
+        """
+        recording_id = rendered.meta.recording_id
+        record = self.store.get(recording_id)
+        total = (record.cost_usd or 0.0 if record else 0.0) + rendered.summary_cost_usd
+        transcribed_at = (
+            rendered.meta.transcribed_at.isoformat()
+            if rendered.meta.transcribed_at
+            else (record.transcribed_at if record else None)
+        )
+        self.store.mark_done(
+            recording_id,
+            duration_seconds=rendered.meta.duration_seconds or None,
+            provider=rendered.meta.provider,
+            model_id=rendered.meta.model_id,
+            cost_usd=total,
+            languages=languages_field(rendered.languages),
+            speaker_count=len(rendered.speaker_labels),
+            transcribed_at=transcribed_at,
+            uploaded_at=datetime.now(timezone.utc).isoformat(timespec="seconds")
+            if drive_files
+            else (record.uploaded_at if record else None),
+            drive_files={**(record.drive if record else {}), **(drive_files or {})} or None,
+        )
+        return total
+
     # --- budget ----------------------------------------------------------
 
     def budgets(self) -> list[Budget]:

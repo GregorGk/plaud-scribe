@@ -257,19 +257,18 @@ def cmd_render(args: argparse.Namespace, cfg: Config) -> int:
             print(f"  {extension}: {path}")
         for warning in rendered.warnings:
             print(f"  ! {warning}")
+        uploaded: dict[str, str] = {}
         if args.upload:
             record = store.get(args.recording_id)
             uploaded = pipeline.upload(rendered, record.drive if record else {})
-            store.mark_done(
-                args.recording_id,
-                provider=rendered.meta.provider,
-                model_id=rendered.meta.model_id,
-                cost_usd=record.cost_usd if record else None,
-                languages=",".join(rendered.languages),
-                speaker_count=len(rendered.speaker_labels),
-                drive_files={**(record.drive if record else {}), **uploaded},
-            )
+        # Persist whenever there is something to persist: an upload, or a summary that
+        # was just paid for. Skipping this is how a real charge goes unrecorded.
+        if uploaded or rendered.summary_cost_usd:
+            pipeline.record_render(rendered, drive_files=uploaded or None)
+        if uploaded:
             print("  uploaded: " + ", ".join(sorted(uploaded)))
+        if rendered.summary_cost_usd:
+            print(f"  summary cost: ${rendered.summary_cost_usd:.5f}")
     return EXIT_OK
 
 

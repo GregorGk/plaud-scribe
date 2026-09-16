@@ -28,7 +28,7 @@ class _Response:
     content: list = field(default_factory=list)
     stop_reason: str = "end_turn"
     usage: _Usage = field(default_factory=_Usage)
-    model: str = "claude-opus-5"
+    model: str = "claude-sonnet-5"
     stop_details: object = None
 
 
@@ -107,9 +107,10 @@ def test_generate_uses_fallbacks_and_prices_usage(transcript, meta, cfg, monkeyp
 
     assert result.text == "## Overview\nHi."
     assert result.served_by is None
-    assert result.cost_usd == pytest.approx((1200 * 5.0 + 300 * 25.0) / 1e6)
+    # Sonnet 5 rates, taken from the model, not a hard-coded figure.
+    assert result.cost_usd == pytest.approx((1200 * 2.0 + 300 * 10.0) / 1e6)
     call = fake.calls[0]
-    assert call["model"] == "claude-opus-5"
+    assert call["model"] == "claude-sonnet-5"
     assert call["fallbacks"] == "default"
     assert call["betas"] == [summary.SERVER_FALLBACK_BETA]
     assert call["thinking"] == {"type": "adaptive"}
@@ -141,7 +142,7 @@ def test_cache_round_trip_and_invalidation(transcript, meta, cfg, monkeypatch):
     def fake_generate(turns, meta, cfg):
         calls.append(1)
         return summary.Summary(
-            text="## Overview\ncached", model="claude-opus-5",
+            text="## Overview\ncached", model="claude-sonnet-5",
             generated_at=datetime(2026, 9, 1, tzinfo=timezone.utc), cost_usd=0.01,
         )
 
@@ -161,15 +162,38 @@ def test_cache_round_trip_and_invalidation(transcript, meta, cfg, monkeypatch):
     assert len(calls) == 3
 
 
+def test_price_follows_the_model(cfg):
+    from plaud_scribe.config import MODEL_PRICES_PER_MTOK
+
+    cfg.summary.model = "claude-sonnet-5"
+    assert cfg.summary.prices() == MODEL_PRICES_PER_MTOK["claude-sonnet-5"]
+
+    cfg.summary.model = "claude-opus-5"
+    assert cfg.summary.prices() == MODEL_PRICES_PER_MTOK["claude-opus-5"]
+
+    # An explicit override always wins.
+    cfg.summary.input_price_per_mtok = 7.5
+    cfg.summary.output_price_per_mtok = 30.0
+    assert cfg.summary.prices() == (7.5, 30.0)
+
+
+def test_unknown_model_over_estimates_rather_than_under(cfg, caplog):
+    cfg.summary.model = "some-future-model"
+    with caplog.at_level("WARNING"):
+        prices = cfg.summary.prices()
+    assert prices == (10.0, 50.0)  # dearest known, so spend is never under-reported
+    assert "No price known" in caplog.text
+
+
 def test_document_has_front_matter_and_heading(meta):
     result = summary.Summary(
-        text="## Overview\nShort.", model="claude-opus-5",
+        text="## Overview\nShort.", model="claude-sonnet-5",
         generated_at=datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc),
     )
     doc = summary.render_document(result, meta)
     assert doc.startswith("---\n")
     assert "plaud_id: rec_test_0001" in doc
-    assert "summary_model: claude-opus-5" in doc
+    assert "summary_model: claude-sonnet-5" in doc
     assert "# Weekly sync / Wochentreffen — summary" in doc
     assert doc.rstrip().endswith("Short.")
 

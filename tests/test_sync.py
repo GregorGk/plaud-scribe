@@ -57,7 +57,7 @@ def test_example_config_loads(tmp_path):
     assert cfg.language.expected == ["en", "de", "pl", "pt", "ru"]
     assert cfg.drive.formats == ["md", "txt", "summary"]
     assert cfg.summary_enabled is True
-    assert cfg.summary.model == "claude-opus-5"
+    assert cfg.summary.model == "claude-sonnet-5"
     assert cfg.speakers.llm_naming is False
 
 

@@ -28,10 +28,10 @@ oauth_port = 8765
 [summary]
 # Or leave empty and export ANTHROPIC_API_KEY instead.
 api_key = ""
-model = "claude-opus-5"
+model = "claude-sonnet-5"
 # "auto" writes in the language that dominates the recording. Or a language name/code.
 language = "auto"
-# low | medium | high
+# low | medium | high. Thinking is adaptive; effort sets how deep it goes.
 effort = "medium"
 max_output_tokens = 8000
 # If Claude declines a recording, let the API retry it on a fallback model.
@@ -65,7 +65,7 @@ min_chars = 12
 # Optional Claude pass that reads the transcript and picks up names people state out
 # loud. Config always wins over it.
 llm_naming = false
-llm_model = "claude-opus-5"
+llm_model = "claude-sonnet-5"
 
 # Diarization numbers speakers in order of first appearance, so "Speaker 1" is whoever
 # talks first — not necessarily you. Map ids to names once you know who is who.

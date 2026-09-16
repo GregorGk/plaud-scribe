@@ -85,8 +85,10 @@ Scribe v2 costs $0.22 per hour of audio (plus $0.05/hour if you fill in `keyterm
 1. Go to https://console.anthropic.com, **API Keys**, **Create Key**.
 2. Put it under `[summary] api_key = "..."` in the same config file.
 
-A one-hour recording is roughly 12k input tokens and under 1k output tokens with
-`claude-opus-5`, so summaries cost a few cents each. `plaud-scribe status` shows spend.
+Summaries use `claude-sonnet-5` with adaptive thinking at medium effort. Measured on a
+real recording, one minute of audio costs about $0.008 to summarise, so the model is the
+larger share of the bill, not the transcription. `plaud-scribe status` shows both.
+Cost figures follow `[summary] model` automatically via the price table in `config.py`.
 Summaries are written in the language that dominates the recording; set
 `[summary] language = "en"` (or any language) to fix it.
 
@@ -240,7 +242,7 @@ regardless; this list only controls which languages the per-turn tags may choose
 | Item | Rate |
 | --- | --- |
 | Scribe v2 transcription | $0.22 per audio hour ($0.27 with `keyterms`) |
-| Claude summary (`claude-opus-5`) | a few cents per recording |
+| Claude summary (`claude-sonnet-5`) | about $0.008 per audio minute, measured |
 | Re-rendering | free |
 | Default ceiling | 2700 audio minutes (45 hours) per calendar month, about $9.90 |
 

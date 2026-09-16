@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import tomllib
 from dataclasses import dataclass, field
@@ -71,22 +72,48 @@ class DriveConfig:
     oauth_port: int = 8765
 
 
+# $/1M tokens, input and output, for the spend figure shown by `plaud-scribe status`.
+MODEL_PRICES_PER_MTOK = {
+    "claude-fable-5-1": (10.0, 50.0),
+    "claude-opus-5": (5.0, 25.0),
+    "claude-opus-4-8": (5.0, 25.0),
+    "claude-sonnet-5": (2.0, 10.0),
+    "claude-haiku-4-5": (1.0, 5.0),
+}
+
+
 @dataclass
 class SummaryConfig:
     """Claude-written summary, produced only when "summary" is in [drive] formats."""
 
     # Or leave empty and export ANTHROPIC_API_KEY instead.
     api_key: str = ""
-    model: str = "claude-opus-5"
+    model: str = "claude-sonnet-5"
     # "auto" = the language that dominates the recording; or a code such as "en".
     language: str = "auto"
     effort: str = "medium"
     max_output_tokens: int = 8000
     # Server-side refusal fallback: re-run on another model if this one declines.
     fallbacks: bool = True
-    # $/1M tokens, for the spend shown by `plaud-scribe status`.
-    input_price_per_mtok: float = 5.0
-    output_price_per_mtok: float = 25.0
+    # $/1M tokens. 0 means "look the model up in MODEL_PRICES_PER_MTOK", so the cost
+    # figure follows the model instead of silently going stale when you change it.
+    input_price_per_mtok: float = 0.0
+    output_price_per_mtok: float = 0.0
+
+    def prices(self) -> tuple[float, float]:
+        if self.input_price_per_mtok or self.output_price_per_mtok:
+            return self.input_price_per_mtok, self.output_price_per_mtok
+        known = MODEL_PRICES_PER_MTOK.get(self.model)
+        if known is not None:
+            return known
+        # Unknown model: over-estimate rather than under-report what was spent.
+        dearest = max(MODEL_PRICES_PER_MTOK.values())
+        logging.getLogger(__name__).warning(
+            "No price known for %s; reporting cost at %s/%s per Mtok. Set [summary] "
+            "input_price_per_mtok and output_price_per_mtok to correct it.",
+            self.model, *dearest,
+        )
+        return dearest
 
 
 @dataclass
@@ -123,7 +150,7 @@ class SpeakerConfig:
     aliases: dict[str, str] = field(default_factory=dict)
     per_recording: dict[str, dict[str, str]] = field(default_factory=dict)
     llm_naming: bool = False
-    llm_model: str = "claude-opus-5"
+    llm_model: str = "claude-sonnet-5"
 
 
 @dataclass

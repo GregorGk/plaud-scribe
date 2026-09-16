@@ -76,6 +76,9 @@ class Summary:
     output_tokens: int = 0
     cost_usd: float = 0.0
     served_by: str | None = None
+    # True when this came back from the cache, meaning cost_usd was already charged and
+    # already recorded. Counting it again inflates the reported spend on every re-render.
+    from_cache: bool = False
 
 
 def cache_path(recording_id: str) -> Path:
@@ -103,6 +106,7 @@ def read_cache(recording_id: str, turns: list[Turn]) -> Summary | None:
             output_tokens=int(data.get("output_tokens", 0)),
             cost_usd=float(data.get("cost_usd", 0.0)),
             served_by=data.get("served_by"),
+            from_cache=True,
         )
     except (KeyError, ValueError):
         return None

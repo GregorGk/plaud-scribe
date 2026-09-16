@@ -217,3 +217,31 @@ def test_pipeline_keeps_transcript_when_summary_fails(transcript, envelope, cfg,
     assert "md" in rendered.documents and "txt" in rendered.documents
     assert "summary" not in rendered.documents
     assert rendered.warnings == ["summary skipped: no key"]
+
+
+def test_cached_summary_is_not_charged_again(transcript, meta, cfg, monkeypatch, tmp_path):
+    """Re-rendering must not re-book a summary that was already paid for."""
+    from plaud_scribe import sync
+
+    monkeypatch.setattr(sync, "RAW_DIR", tmp_path)
+    generated = summary.Summary(
+        text="## Overview\nx", model="claude-sonnet-5",
+        generated_at=datetime(2026, 9, 1, tzinfo=timezone.utc), cost_usd=0.008,
+    )
+    calls = []
+    monkeypatch.setattr(summary, "generate", lambda *a, **k: calls.append(1) or generated)
+
+    pipeline = sync.Pipeline(cfg, plaud=None, store=None)
+    first = pipeline.build_documents(
+        recording_id=meta.recording_id, title=meta.title, recorded_at=meta.recorded_at,
+        duration=meta.duration_seconds, transcript=transcript,
+    )
+    assert first.summary_cost_usd == pytest.approx(0.008), "first run pays for it"
+
+    second = pipeline.build_documents(
+        recording_id=meta.recording_id, title=meta.title, recorded_at=meta.recorded_at,
+        duration=meta.duration_seconds, transcript=transcript,
+    )
+    assert len(calls) == 1, "second run must reuse the cache"
+    assert "summary" in second.documents, "and still include the document"
+    assert second.summary_cost_usd == 0.0, "but must not charge for it again"

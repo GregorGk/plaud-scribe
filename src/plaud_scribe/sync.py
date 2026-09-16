@@ -256,7 +256,9 @@ class Pipeline:
             rendered.warnings.append(message)
             return
         rendered.documents["summary"] = summary_module.render_document(summary, meta)
-        rendered.summary_cost_usd = summary.cost_usd
+        # A cached summary cost nothing this time round; its price was booked when it
+        # was generated. Re-counting it would inflate spend on every re-render.
+        rendered.summary_cost_usd = 0.0 if summary.from_cache else summary.cost_usd
 
     def render_from_cache(self, recording_id: str, *, resummarize: bool = False) -> Rendered:
         path = cache_path(recording_id)
